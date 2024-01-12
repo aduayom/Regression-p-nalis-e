@@ -1,0 +1,516 @@
+---
+pdf_document: default
+authors: ' ADUAYOM Daniel & SADIO Ndeye Salimata '
+title: 'Projet : Régressions pénalisées'
+output: pdf_document
+html_document: default
+---
+
+
+# Import des librairies utiles
+```{r}
+library(mvtnorm)
+library(palmerpenguins)
+library(glmnet)
+library(xtable)
+library(stargazer)
+library(ggplot2)
+library(gridExtra)
+library(ordinal)
+library(knitr)
+library(dplyr)
+library(kableExtra)
+library(corrplot)
+library(pls)
+library(pROC)
+```
+
+# Lecture des données
+```{r}
+data=read.table("transportmod3.txt",h=T)
+head(data)
+```
+
+# Statistiques descriptives
+
+## Valeurs descriptives
+```{r  }
+# Sélection des dolonnes à décrire
+colonnes_a_analyser <- c("CO2", "Incid", "CA")
+donnees_selectionnees <- data[colonnes_a_analyser]
+
+# Affichage des statistiques descriptives
+res_summary <- summary(donnees_selectionnees)
+table_latex <- xtable(res_summary)
+
+# Génération du code LaTeX
+print(table_latex)
+```
+
+## Graphe des corrélations
+```{r  }
+# Définition un seuil pour les fortes corrélations 
+threshold <- 0.7
+correlation_matrix <- cor(data)
+
+# Récupérer les noms de lignes et de colonnes de corrélations fortes
+strong_correlations <- as.data.frame(which(abs(correlation_matrix) > threshold, arr.ind = TRUE))
+strong_correlations
+
+# Histogramme
+
+histo_mass <- ggplot(data)+
+  geom_histogram(aes(x=Port.Port.60), fill="darkorchid4", color="darkgray", bins=50)+
+  labs(title = "Incid", subtitle = "Histogram")+
+  ylab("Count")+theme_light()
+histo_mass
+
+a <- ggplot(data, aes(x = Port.Port.25))
+a
+# Histogram with density plot
+a + geom_histogram(aes(y = ..density..), 
+                   colour="black", fill="white") +
+  geom_density(alpha = 0.2, fill = "#FF6666")
+
+a +geom_histogram(aes(y = after_stat(density)), bins = 30, colour = "black", fill = "white") +
+  geom_density(alpha = 0.2, fill = "#FF6666")
+
+
+# Créer un graphique en violon
+ggplot(data, aes(x = CA)) +
+  geom_bar(fill = "#69b3a2", color = "#e9ecef") +
+  labs(title = "Countplot of Variable Binaire (CA)",
+       x = "CA Category",
+       y = "Count")
+```
+
+## Conditionnenment de XX
+```{r  }
+X=as.matrix(data[,5:64])
+
+# Calculer la matrice X'X
+XTX <- t(X) %*% X
+
+# Calculer les valeurs propres de X'X
+eigen_XTX <- eigen(XTX)
+cat("Valeurs propres de X'X:", eigen_XTX$values, "\n")
+
+# Calculer l'indice de conditionnement
+condition_index <- max(eigen_XTX$values) / min(eigen_XTX$values)
+
+# Afficher l'indice de conditionnement
+cat("Indice de conditionnement:", condition_index, "\n")
+```
+
+
+# Modélisation du CO2
+
+## Standardisation de la donnée
+```{r  }
+#Centrer et réduire les variables explicatives
+Y=data$CO2
+X=as.matrix(data[,5:64])
+XS=scale(X)
+```
+
+
+## Modèle RIDGE
+```{r  }
+# On a un modèle linéaire. On va prendre family = 'gaussian'
+rescv=cv.glmnet(XS,Y,family='gaussian',alpha=0, lambda=seq(0.1, 100, 0.1))
+plot(rescv)
+
+# Stabilisation du lambda avec une boucle
+rescv=cv.glmnet(XS,Y,family='gaussian',alpha=0, lambda=seq(0.1, 100, 0.1))
+plot(rescv)
+lambda=rescv$lambda.min
+lambda
+
+# Autre méthode
+lambda=0
+for (j in 1:10)
+{
+  rescv=cv.glmnet(XS,Y,family='gaussian',alpha=0, lambda=seq(0.1, 100, 0.1))
+  print(rescv$lambda.min)
+  lambda=lambda+rescv$lambda.min
+}
+```
+
+### Redéfinition du seuil
+```{r  }
+seuil=lambda/10
+resridge=glmnet(XS,Y,family='gaussian',alpha=0, lambda=seuil) 
+#On retire le coefficient 1
+coef=coefficients(resridge)[-1] 
+#On affiche
+plot(sort(abs(coef)))
+```
+On prend les 8 premiers qui se détachent du groupe.
+
+### Choix des ports 
+```{r  }
+#En fonction du plot
+which(abs(coef)>0.6) 
+
+# A l'aide d'un boxplot
+resbox=boxplot(coef)
+which(coef>resbox$stats[5,])
+
+selecridge=order(coef,decreasing=TRUE)[1:5]
+colnames(X[,selecridge])
+```
+Les ports retenus sont: 5 3 58 34 8.
+
+
+## Modèle LASSO
+```{r  }
+
+#Modèle LASSO 
+rescv=cv.glmnet(XS,Y,family='gaussian',alpha=1)
+plot(rescv)
+
+# Prenons le lambda_1se qui sÃ©lectionne un peu moins de variables  
+seuil=rescv$lambda.1se
+reslasso=glmnet(XS,Y,family='gaussian',alpha=1,lambda=seuil)
+
+#Boucle sur le lambda
+lambda=0
+for (j in 1:10)
+{
+  reslasso=cv.glmnet(XS,Y,family='gaussian',alpha=1, lambda=seq(0.1, 100, by = 0.1))
+  print(reslasso$lambda.1se)
+  lambda=lambda+reslasso$lambda.1se
+}
+```
+
+#Définition du seuil 
+```{r  }
+#Par calcul de la moyenne
+seuil=lambda/10 
+seuil
+
+# On va alors redefinir un meilleur seuil et relancer notre régression 
+reslasso=glmnet(XS,Y,family='gaussian',alpha=1, lambda=seuil)
+coef=coefficients(reslasso)[-1]
+plot(sort(abs(coef)))
+```
+On sélectionne 4 variables
+
+```{r  }
+selected_va <- which(coef!=0)
+selected_va
+```
+On obtient les ports: 3 5 7 58.
+
+## Modèle Elasticnet
+
+### Modèle
+```{r  }
+"On procède de la meme manière en stabilisant notre modèle sur un intervalle de test de valeur"
+lambda=0
+for (j in 1:10)
+{
+  resenet=cv.glmnet(XS,Y,family='gaussian',alpha=0.5,lambda=seq(0.1, 100, 0.1))
+  print(resenet$lambda.1se)
+  lambda=lambda+resenet$lambda.1se
+}
+
+lambda.1se=lambda/10
+lambda.1se
+resenet=glmnet(XS,Y,family='gaussian',alpha=0.5,lambda=lambda.1se)
+coef=coefficients(resenet)[-1]
+plot(sort(abs(coef)))
+which(coef!=0)
+coef
+```
+Les ports: 3 5 7 8 34 58.
+
+
+## Modèle Linéaire
+```{r  }
+linear_model <- lm(Y ~ X[, selected_va])
+print(selected_va)
+# Afficher le modèle linéaire
+summary(linear_model)
+```
+
+## Modèle PCA
+```{r  }
+# Effectuez le PCR
+pcr_model <- pcr(Y ~ XS, scale = TRUE)
+
+# Résumé du modèle PCR
+summary(pcr_model)
+
+# Initialisation du vecteur pour stocker les RMSEP
+rmsep_values <- numeric(36)
+
+# Boucle sur le nombre de composantes
+for (i in 1:36) {
+  pcr_model <- pcr(Y ~ XS, ncomp = i, scale = TRUE)
+  
+  # Prédiction sur l'ensemble de données
+predicted_values <- predict(pcr_model, as.data.frame(X))
+  
+  # Calcul du RMSEP
+rmsep_values[i] <- sqrt(mean((Y - predicted_values)^2))
+}
+
+# Tracer le graphique du RMSEP
+plot(1:36, rmsep_values, type = "b", xlab = "Nombre de composantes", ylab = "RMSEP")
+# Trouver le nombre optimal de composantes
+optimal_components <- which.min(rmsep_values)
+
+# Seuillage pour les coefficients
+threshold <- 0.3 # Choisissez votre seuil
+significant_coef <- abs (coef(pcr_model)) > threshold
+
+respca2=plsr(Y ~XS, ncomp=16)
+summary(respca2)
+
+coefpca=coef(respca2)
+par(mfrow=c(1,1))
+plot(coefpca) # on pourrait faire du seuillage ici
+plot(sort(abs(coefpca)))
+selecpca=order(abs(coefpca),decreasing=TRUE)[1:9] 
+
+colnames(X[,selecpca])
+```
+
+##Modèle PLS
+```{r  }
+# Réaliser la régression PLS
+pls_model <- plsr(Y ~ XS, ncomp = 16)  # Vous pouvez ajuster ncomp selon votre analyse
+
+# Afficher un résumé du modèle PLS
+summary(pls_model)
+
+# Visualiser les coefficients PLS
+coef_pls <- coef(pls_model, ncomp = 16)  # Vous pouvez ajuster ncomp ici aussi
+print(coef_pls)
+```
+
+#Modélisation du nombre d'incidents
+
+## Modélisation Ridge de Poisson
+```{r  }
+#Modèle de Ridge de poisson
+rescv_p <- cv.glmnet(XS, Y, family = "poisson", alpha = 0) 
+plot(rescv_p)
+
+# Sélectionner le meilleur modèle en # utilisant la validation croisée
+lambda=0
+for (j in 1:10)
+{
+  rescv_poisson <- cv.glmnet(XS, Y, family = "poisson", alpha=0, lambda=seq(0.1, 100, 0.1))
+  # Trouver le meilleur lambda (paramètre de régularisation)
+  print(rescv_poisson$lambda.min)
+  lambda=lambda+rescv_poisson$lambda.min
+}
+seuil=lambda/10
+
+#On refait notre modèle avec le nouveau seuil trouvé
+rescv_poisson <- glmnet(XS, Y, family = "poisson", alpha=0, lambda=seuil)
+
+# Obtenir le vecteur des coefficients du meilleur modèle
+best_coeffs <- coef(rescv_poisson)
+
+# Sélectionner les variables non nulles du meilleur modèle
+selected_vars <- which(best_coeffs != 0)
+
+# Obtenez le nom des variables sélectionnées (en supposant que vous avez des noms de variables)
+selected_var_names <- colnames(XS)[selected_vars]
+
+# Deuxieme méthode
+coef=coefficients(rescv_poisson)[-1] # on retire le coefficient 1
+'la plupart de nos coeff sont différents de zéro donc une autre technique serait optimal
+notamment un choix basé sur le seuillage ??'
+```
+
+#Lasso de Poisson
+```{r  }
+lambda=0
+for (j in 1:10)
+{
+Lasso_poisson <- cv.glmnet(XS, Y, family = "poisson", alpha=1, lambda=seq(0.1, 100, 0.1))
+  # Trouver le meilleur lambda (paramètre de régularisation)
+  print(Lasso_poisson$lambda.1se)
+  lambda=lambda+Lasso_poisson$lambda.1se
+}
+seuil=lambda/10
+
+Lasso_poisson=glmnet(XS,Y,family='gaussian',alpha=1, lambda=seuil)
+
+coef=coefficients(Lasso_poisson)[-1]
+plot(sort(abs(coef)))
+which(coef!=0)
+
+# Extraire les coefficients du modèle Lasso (s = 0)
+lasso_coefficients <- coef(Lasso_poisson, s = 0)
+# Obtenir les indices des variables retenues
+selected_indices <- which(lasso_coefficients != 0)
+# Obtenir les noms des variables retenues
+selected_variables <- colnames(lasso_coefficients)[selected_indices]
+# Afficher les noms des variables retenues
+print(selected_variables)
+```
+
+### Elasticnet de Poisson
+```{r  }
+lambda=0
+for (j in 1:10)
+{
+  Elastinet_poisson <- cv.glmnet(XS, Y, family = "poisson", alpha=0.5, lambda=seq(0.1, 100, 0.1))
+  # Trouver le meilleur lambda (paramètre de régularisation)
+  print(Elastinet_poisson$lambda.1se)
+  lambda=lambda+Elastinet_poisson$lambda.1se
+}
+seuil=lambda/10
+
+Lasso_poisson=glmnet(XS,Y,family='gaussian',alpha=0.5, lambda=seuil)
+```
+
+### Régression de Poisson
+```{r  }
+# Modèle de Regression de poisson
+# Exemple de régression de Poisson
+# Supposons que votre dataframe s'appelle "df" et que vous voulez sélectionner les colonnes "col1", "col2" et "col3"
+ports_selectionnees <- X[, c("Port.Port.3","Port.Port.5", "Port.Port.7", "Port.Port.58")]
+model_poisson <- glm(Y ~ ports_selectionnees, family = poisson)
+summary(model_poisson)
+```
+
+
+# Modélisation de CA
+
+## Modèle Ridge
+```{r  }
+# Modèle de Regression de poisson
+# Exemple de régression de Poisson
+# Supposons que votre dataframe s'appelle "df" et que vous voulez sélectionner les colonnes "col1", "col2" et "col3"
+ports_selectionnees <- X[, c("Port.Port.3","Port.Port.5", "Port.Port.7", "Port.Port.58")]
+model_poisson <- glm(Y ~ ports_selectionnees, family = poisson)
+summary(model_poisson)
+```
+
+```{r  }
+Y=data$CA
+X=as.matrix(data[,5:64])
+XS=scale(X)# Standardisation de la donées
+
+# Supposons que y est initialement une variable binaire (0 ou 1)
+Y <- as.factor(Y)
+
+# Définir "1" comme le niveau par défaut
+levels(Y) <- c("0", "1")
+
+# Réalisez une régression logistique Ridge avec validation croisée
+cv.ridge <- cv.glmnet(XS, Y, alpha = 0, family = "binomial",lambda=seq(0.1, 20, 0.2))
+best_lambda <- cv.ridge$lambda.min  # ou cv.ridge$lambda.1se selon votre choix
+plot(cv.ridge)
+
+# Entraînez le modèle final avec le meilleur lambda
+ridge_model <- glmnet(XS, Y, alpha = 0, lambda = best_lambda, family = "binomial")
+
+# Sélection des variables
+coefridge=coefficients(ridge_model)[-1]
+plot(sort(abs(coefridge))) 
+boxplot(coefridge)
+selec3=order(abs(coefridge),decreasing=TRUE)[1:3]
+selec3
+
+selec12=order(abs(coefridge),decreasing=TRUE)[1:6]
+selec12
+
+colnames(X[,selec3])
+colnames(X[,selec12])
+```
+
+# Régression LASSO
+```{r  }
+rescv=cv.glmnet(XS,Y,family='binomial',alpha=1,lambda=seq(0.1, 20, 0.2))
+plot(rescv)
+seuil=rescv$lambda.1se # sélection => lambda.1SE 
+# le lambda.1se varie car il d?pend de la partition utilisée pour la CV 
+# l'idéal 
+reslasso=glmnet(X,Y,family='binomial',alpha=1,lambda=seuil)
+reslasso
+coeflasso=coefficients(reslasso)[-1]
+plot(sort(abs(coeflasso))) 
+selec6=order(abs(coeflasso),decreasing=TRUE)[1:6]
+colnames(X[,selec6])
+```
+
+#AUC & Interprétation
+```{r  }
+# Obtenez les probabilités prédites
+probas_lasso <- predict(reslasso, newx = as.matrix(XS), s = seuil, type = "response")
+
+# Supposons que vous avez déjà les probabilités prédites dans une variable 'probas'
+# et que 'Y' est votre variable de réponse binaire
+
+roc_curve <- roc(Y, probas_lasso)
+roc_curve
+auc_value <- auc(roc_curve)
+
+# Obtenez les coefficients
+coefficients_lasso <- coef(reslasso, s = seuil)
+
+# Affichez les coefficients
+print(coefficients_lasso)
+
+# Supposons que vous avez déjà les coefficients dans une variable 'coefficients'
+variable_significative <- names(coeflasso)[which.max(abs(coeflasso))]
+cat("La variable la plus significative est :", variable_significative)
+```
+
+# Modélisation de CA3
+```{r  }
+# Supposons que X soit votre matrice de variables explicatives et Y votre variable réponse CA3
+
+# Convertir la variable réponse en facteur
+Y=data$CA3
+X=as.matrix(data[,5:64])
+XS=scale(X)# Standardisation de la donées
+Y <- as.factor(Y)
+
+# Appliquer la régression multinomiale pénalisée avec la validation croisée
+cv_fit_multinom <- cv.glmnet(x = XS, y = Y, family = "multinomial", alpha = 1, lambda=seq(0.1, 20, 0.2))
+
+# Obtenir le meilleur lambda à partir de la validation croisée
+best_lambda_multinom <- cv_fit_multinom$lambda.min
+
+# Appliquer la régression multinomiale pénalisée avec le meilleur lambda
+fit_multinom_best_lambda <- glmnet(x = XS, y = Y, family = "multinomial", alpha = 1, lambda = best_lambda_multinom)
+fit_multinom_best_lambda
+
+# Sélectionner les variables
+selected_vars <- coef(fit_multinom_best_lambda)
+
+# Afficher les variables sélectionnées
+print(selected_vars)
+```
+
+# Régression polytomique ordonnée
+```{r  }
+# Supposons que Y_ordered est votre variable réponse ordonnée et X_Select est votre matrice d'variables explicatives
+# Convertir Y_ordered en une variable ordonnée si ce n'est pas déjà fait
+Y_ordered <- as.ordered(Y)
+
+# Créer une matrice X_Select (remplacez cela par votre propre matrice)
+X_Select <- data[, c("Port.Port.5", "Port.Port.24", "Port.Port.29",
+                     "Port.Port.40","Port.Port.43","Port.Port.54")]
+
+# Appliquer la régression polytomique ordonnée
+fit_ord <- clm(Y_ordered ~ ., data = cbind(X_Select, Y_ordered))
+
+# Afficher les résultats
+summary(fit_ord)
+
+stargazer(fit_ord, title = "Régression polytomique ordonnée", out = "table.tex")
+```
+
+
+
+
+

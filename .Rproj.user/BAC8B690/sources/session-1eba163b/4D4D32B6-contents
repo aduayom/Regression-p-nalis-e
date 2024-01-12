@@ -1,0 +1,205 @@
+---
+title: 'Projet : Régressions pénalisées'
+authors: ' ADUAYOM Daniel & SADIO Ndeye Salimata '
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Import des librairies utiles
+```{r cars}
+library(mvtnorm)
+library(glmnet)
+library(xtable)
+library(stargazer)
+library(ggplot2)
+```
+
+
+# Lecture des données
+```{r cars}
+data=read.table("transportmod3.txt",h=T)
+View(data)
+summary(data)
+```
+
+
+# Statistiques descriptives
+
+## Valeurs descriptives
+```{r cars}
+# Sélection des dolonnes à décrire
+colonnes_a_analyser <- c("CO2", "Incid", "CA")
+donnees_selectionnees <- data[colonnes_a_analyser]
+
+# Affichage des statistiques descriptives
+res_summary <- summary(donnees_selectionnees)
+table_latex <- xtable(res_summary)
+
+# Génération du code LaTeX
+print(table_latex)
+```
+
+## Graphe des coorélations
+```{r cars}
+# Définition un seuil pour les fortes corrélations 
+threshold <- 0.7
+correlation_matrix <- cor(data)
+
+# Récupérer les noms de lignes et de colonnes de corrélations fortes
+strong_correlations <- as.data.frame(which(abs(correlation_matrix) > threshold, arr.ind = TRUE))
+
+# Afficher la carte thermique pour les corrélations fortes
+ggplot(strong_correlations, aes(Var2, Var1, fill = correlation_matrix[abs(correlation_matrix) > threshold])) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Correlation Heatmap for Strong Correlations")
+
+# Créer un graphique en violon
+ggplot(data, aes(x = CA)) +
+  geom_bar(fill = "#69b3a2", color = "#e9ecef") +
+  labs(title = "Countplot of Variable Binaire (CA)",
+       x = "CA Category",
+       y = "Count")
+```
+
+## Conditionnenment de XX
+```{r cars}
+X=as.matrix(data[,5:64])
+
+# Calculer la matrice X'X
+XTX <- t(X) %*% X
+
+# Calculer les valeurs propres de X'X
+eigen_XTX <- eigen(XTX)
+cat("Valeurs propres de X'X:", eigen_XTX$values, "\n")
+
+# Calculer l'indice de conditionnement
+condition_index <- max(eigen_XTX$values) / min(eigen_XTX$values)
+
+# Afficher l'indice de conditionnement
+cat("Indice de conditionnement:", condition_index, "\n")
+```
+
+# Standardisation de la donnée
+```{r cars}
+#Centrer et réduire les variables explicatives
+Y=data$CO2
+X=as.matrix(data[,5:64])
+XS=scale(X)
+```
+
+
+# Modélisation du CO2
+
+## Modèle RIDGE
+```{r cars}
+# On a un modèle linéaire. On va prendre family = 'gaussian'
+rescv=cv.glmnet(XS,Y,family='gaussian',alpha=0, lambda=seq(0.1, 100, 0.1))
+plot(rescv)
+
+lambda=rescv$lambda.min
+lambda
+```
+
+### Stabilisation du lambda avec une boucle
+```{r cars}
+lambda=0
+for (j in 1:10)
+{
+  rescv=cv.glmnet(XS,Y,family='gaussian',alpha=0, lambda=seq(0.1, 100, 0.1))
+  print(rescv$lambda.min)
+  lambda=lambda+rescv$lambda.min
+}
+```
+
+### Redéfinition du seuil
+```{r cars}
+seuil=lambda/10
+rescv=glmnet(XS,Y,family='gaussian',alpha=0, lambda=seuil) 
+#On retire le coefficient -1
+coef=coefficients(rescv)[-1] 
+```
+
+### Choix des variables 
+```{r cars}
+#En fonction du plot
+plot(sort(abs(coef)))
+which(abs(coef)>0.6) 
+
+
+# A l'aide d'un boxplot
+resbox=boxplot(coef)
+which(coef>resbox$stats[5,])
+
+selecridge=order(coef,decreasing=TRUE)[1:5]
+colnames(X[,selecridge])
+```
+Les ports retenus sont: 3  5  8 34 58
+
+
+## Modèle LASSO
+
+```{r cars}
+lambda=0
+for (j in 1:10)
+{
+  reslass=cv.glmnet(XS,Y,family='gaussian',alpha=1, lambda=seq(0.1, 100, 0.1))
+  print(reslass$lambda.1se)
+  lambda=lambda+reslass$lambda.1se
+}
+```
+
+#Définition du seuil
+```{r cars}
+seuil=lambda/10 
+
+# On va alors redefinir un meilleur seuil et relancer notre regression de ridge
+reslass=glmnet(XS,Y,family='gaussian',alpha=1, lambda=seuil)
+```
+
+#Coefficients
+```{r cars}
+coef=coefficients(reslass)[-1]
+plot(sort(abs(coef)))
+which(coef!=0)
+plot(res)
+```
+On retient les memes ports que Ridge en plus du port 7 .
+
+
+## Modèle Elasticnet
+
+### Modèle
+```{r cars}
+"On procède de la meme façon en stabilisant notre modèle sur un intervalle de test de valeur"
+lambda=0
+for (j in 1:10)
+{
+  resenet=cv.glmnet(XS,Y,family='gaussian',alpha=0.5,lambda=seq(0.1, 100, 0.1))
+  print(resenet$lambda.1se)
+  lambda=lambda+resenet$lambda.1se
+}
+seuil=lambda/10
+resenet=glmnet(XS,Y,family='gaussian',alpha=0.5,lambda=seuil)
+```
+
+### Choix des coefficients
+```{r cars}
+coef=coefficients(resenet)[-1]
+plot(sort(abs(coef)))
+which(coef!=0)
+coef
+# regardons le boxplot des coef non nuls 
+coefnonnul=coef[coef!=0]
+boxplot(coefnonnul)
+selecnet=order(coef,decreasing=TRUE)[1:8]
+```
+
+## Modèle Linéaire
+
+Nous allons effectuer notre modèlele linéaire sur les variables issues du 
+
+

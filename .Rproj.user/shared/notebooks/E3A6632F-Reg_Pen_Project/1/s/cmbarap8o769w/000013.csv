@@ -1,0 +1,4 @@
+"0","# Histogram with density plot"
+"0","a + geom_histogram(aes(y = ..density..), "
+"0","                   colour=""black"", fill=""white"") +"
+"0","  geom_density(alpha = 0.2, fill = ""#FF6666"")"

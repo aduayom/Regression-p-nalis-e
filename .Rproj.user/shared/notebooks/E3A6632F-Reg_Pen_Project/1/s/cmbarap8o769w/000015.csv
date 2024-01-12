@@ -1,0 +1,3 @@
+"0",""
+"0","a +geom_histogram(aes(y = after_stat(density)), bins = 30, colour = ""black"", fill = ""white"") +"
+"0","  geom_density(alpha = 0.2, fill = ""#FF6666"")"

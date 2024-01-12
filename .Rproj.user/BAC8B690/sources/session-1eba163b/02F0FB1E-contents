@@ -1,0 +1,142 @@
+---
+title: "TP noté : Machine Learning - Agrégation de modèles"
+author: "Ndeye Salimata SADIO"
+date: " 06 Octobre 2023"
+output: html_document
+---
+
+## Questions d'introduction
+1- La variable cible est quantitative donc nous avons un problème de prédiction. La fonction de perte que nous utilisons est l'erreur moyenne quadratique: RMSE.
+
+2-  Avec les techniques de boosting, on peut agréger des fonctions de prédiction de types faibles que l'on va 'booster' pour construire une règle performante.
+
+3- Avec les techniques de stacking, on peut agréger des fonctions de prédiction de type différents. Nous avons d'abors des modèles de type premier niveau dont les prédictions sont combinés par un autre modèle de type deuxième niveau.
+
+## Chargement de la base de données
+
+```{r cars}
+music1=read.csv2('music2023.csv', sep=';')
+?read.csv2
+music = music1[,-c(1,2)]
+summary(music)
+head(music)
+```
+
+## Séparation des données
+```{r pressure, echo=FALSE}
+set.seed(123)
+trainIndex <- createDataPartition(music$nb_playlists, p = 0.8, 
+                                  list = FALSE, 
+                                  times = 1)
+music_train <- music[trainIndex, ]
+music_test <- music[-trainIndex, ]
+```
+
+## Mise en oeuvre de l'algorithme Bagging
+
+You can also embed plots, for example:
+
+
+```{r pressure, echo=FALSE}
+
+library(randomForest)
+library(e1071)
+
+model_bag <- randomForest(nb_playlists ~ ., data=music_train, ntree=100, mtry=ncol(music_train)-1)
+
+
+
+pred_bag <- predict(model_bag, newdata=music_test)
+mse_bag <- (mean((pred_bag - music_test$nb_playlists)^2))
+
+# MSE Calculation
+print(paste("MSE for Bagging: ", round(mse_bag,3)))
+
+print(paste("RMSE for Bagging: ", round(rmse_bag,3)))
+
+```
+
+
+## Mise en oeuvre de randomForest
+```{r pressure, echo=FALSE}
+#Random Forest
+library(randomForest)
+library(e1071)
+music.tune.rf=tune.randomForest(music_train[, 1:12], 
+music_train[, 13],xtest = music_test[, 1:12],
+ytest = music_test[, 13],mtry = c(5, 7, 9, 12),
+ntree = c(100, 200, 300),importance = TRUE,keep.forest=TRUE)
+summary(music.tune.rf)
+plot(music.tune.rf)
+
+
+library(randomForest)
+library(e1071)
+
+# Random Forest Model
+model_rf <- randomForest(nb_playlists ~ ., data=music_train, ntree=100, mtry=sqrt(ncol(music_train)-1))
+
+# Prediction
+pred_rf <- predict(model_rf, newdata=music_test)
+
+# MSE Calculation
+mse_rf <- (mean((pred_rf - music_test$nb_playlists)^2))
+
+# RMSE Calculation (assuming you meant to calculate RMSE in your previous code)
+rmse_rf <- sqrt(mse_rf)
+
+print(paste("MSE for Random Forest: ", round(mse_rf,3)))
+print(paste("RMSE for Random Forest: ", round(rmse_rf,3)))
+
+
+```
+
+## Mise en oeuvre du Boosting
+```{r pressure, echo=FALSE}
+library(xgboost)
+model.xgb <- xgboost(data = as.matrix(music_train[,1:12]),
+                     label =   music_train[, 13],
+                     max_depth = 2, 
+                     eta = 1, 
+                     nthread = 2, 
+                     nrounds = 1000,
+                     objective = "reg:squarederror")
+
+
+summary(model.xgb)
+
+pred.xgboost <- predict(model.xgb, newdata=as.matrix(music_test[,1:12]))
+
+y <- music_test[, 13]
+plot(y,pred.xgboost)
+
+rmse <- sqrt(mean((y - pred.xgboost)^2))
+print(paste("RMSE:", round(rmse, 3)))
+
+                        
+```
+
+
+
+```{r pressure, echo=FALSE}
+# Créer une liste de modèles
+models <- list(
+  tree = randomForest(nb_playlists ~ ., data=music),
+  glm = glm(nb_playlists ~ ., data=music, family="gaussian"),
+  gbm = gbm(nb_playlists ~ ., data=music, distribution="gaussian", n.trees=100, shrinkage=0.01)
+)
+
+# Utiliser le SuperLearner pour combiner les prédictions
+stacking_model <- SuperLearner(Y = data$nb_playlists, X = music[, -which(names(music) == "nb_playlists")], SL.library = models, family = gaussian())
+stacking_pred <- predict(stacking_model, newdata = music[, -which(names(music) == "nb_playlists")])
+stacking_mse <- mean((stacking_pred$pred - music$nb_playlists)^2)
+stacking_mse
+
+
+```
+
+Comparaison des performances:
+XGBoost (Boosting) présente la meilleure performance , ce qui indique une bonne précision dans les prédictions. Cependant, la valeur peut être à revoir.
+Random Forest vient ensuite avec une RMSE, montrant une meilleure précision que le Bagging .
+Bagging a la performance la plus faible donc il est le moins précis des trois.
+

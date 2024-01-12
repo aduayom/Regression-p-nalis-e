@@ -1,0 +1,7 @@
+"0","# Définition un seuil pour les fortes corrélations "
+"0","threshold <- 0.7"
+"0","correlation_matrix <- cor(data)"
+"0",""
+"0","# Récupérer les noms de lignes et de colonnes de corrélations fortes"
+"0","strong_correlations <- as.data.frame(which(abs(correlation_matrix) > threshold, arr.ind = TRUE))"
+"0","strong_correlations"

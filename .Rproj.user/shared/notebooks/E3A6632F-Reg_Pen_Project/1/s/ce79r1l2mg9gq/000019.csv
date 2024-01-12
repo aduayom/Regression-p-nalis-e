@@ -1,0 +1,8 @@
+"0",""
+"0",""
+"0","# Créer un graphique en violon"
+"0","ggplot(data, aes(x = CA)) +"
+"0","  geom_bar(fill = ""#69b3a2"", color = ""#e9ecef"") +"
+"0","  labs(title = ""Countplot of Variable Binaire (CA)"","
+"0","       x = ""CA Category"","
+"0","       y = ""Count"")"

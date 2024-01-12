@@ -1,0 +1,28 @@
+"0","# Sélection des dolonnes à décrire"
+"0","colonnes_a_analyser <- c(""CO2"", ""Incid"", ""CA"")"
+"0","donnees_selectionnees <- data[colonnes_a_analyser]"
+"0",""
+"0","# Affichage des statistiques descriptives"
+"0","res_summary <- summary(donnees_selectionnees)"
+"0","table_latex <- xtable(res_summary)"
+"0",""
+"0","# Génération du code LaTeX"
+"0","print(table_latex)"
+"1","% latex table generated in R 4.3.2 by xtable 1.8-4 package
+% Wed Dec 13 21:28:19 2023
+\begin{table}[ht]
+\centering
+\begin{tabular}{rlll}
+  \hline
+ &      CO2 &     Incid &       CA \\ 
+  \hline
+X & Min.   : 4.970   & Min.   :  3.0   & Min.   :0.0000   \\ 
+  X.1 & 1st Qu.: 6.710   & 1st Qu.: 13.0   & 1st Qu.:0.0000   \\ 
+  X.2 & Median : 7.410   & Median : 27.0   & Median :0.0000   \\ 
+  X.3 & Mean   : 7.465   & Mean   : 34.7   & Mean   :0.4054   \\ 
+  X.4 & 3rd Qu.: 8.290   & 3rd Qu.: 42.0   & 3rd Qu.:1.0000   \\ 
+  X.5 & Max.   :10.550   & Max.   :152.0   & Max.   :1.0000   \\ 
+   \hline
+\end{tabular}
+\end{table}
+"

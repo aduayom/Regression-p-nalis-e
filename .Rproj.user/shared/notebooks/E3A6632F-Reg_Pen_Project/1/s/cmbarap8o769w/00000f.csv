@@ -1,0 +1,5 @@
+"0","histo_mass <- ggplot(data)+"
+"0","  geom_histogram(aes(x=Port.Port.60), fill=""darkorchid4"", color=""darkgray"", bins=50)+"
+"0","  labs(title = ""Incid"", subtitle = ""Histogram"")+"
+"0","  ylab(""Count"")+theme_light()"
+"0","histo_mass"
